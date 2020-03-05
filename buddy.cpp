@@ -212,7 +212,7 @@ public:
 	}
 	
 	/**
-	 * Allocates 2^order number of contiguous pages
+	 * Allocates 2^order number of contiguous pages.
 	 * @param order The power of two, of the number of contiguous pages to allocate.
 	 * @return Returns a pointer to the first page descriptor for the newly allocated page range, or NULL if
 	 * allocation failed.
@@ -232,7 +232,7 @@ public:
 			slot = &_free_areas[i];
 
 			//Found a larger block, so break.
-			if(*slot != NULL)
+			if (*slot != NULL)
 			break;	
 		}
 		
@@ -257,7 +257,7 @@ public:
 	 */
 	void free_pages(PageDescriptor *pgd, int order) override
 	{
-		// Make sure that the incoming page descriptor is correctly aligned
+		// Make sure that the incoming page descriptor is correctly aligned.
 		// for the order on which it is being freed, for example, it is
 		// illegal to free page 1 in order-1.
 		assert(is_correct_alignment_for_order(pgd, order));
@@ -295,7 +295,7 @@ public:
 	 */
 	bool reserve_page(PageDescriptor *pgd)
 	{
-		// (1)Search for the block that contains the given page.
+		// (1) Search for the block that contains the given page.
 		int i = MAX_ORDER - 1;
 		PageDescriptor **slot = &_free_areas[i];
 		uint64_t pfn = sys.mm().pgalloc().pgd_to_pfn(pgd);
@@ -305,8 +305,9 @@ public:
 		for (; i >= 0 ; i--) {
 			slot = &_free_areas[i];
 			slot_pfn = sys.mm().pgalloc().pgd_to_pfn(*slot);
+			int nr_page_block = pages_per_block(i);
 
-			while (*slot && (slot_pfn > pfn || slot_pfn + pages_per_block(i) - 1< pfn)) {
+			while (*slot && (slot_pfn > pfn || slot_pfn + nr_page_block - 1< pfn)) {
 				
 				//Refresh the PFN value of slot whenever slot changes.
 				slot = &(*slot)->next_free;
@@ -318,18 +319,18 @@ public:
 				break;
 		}
 
-		//Return false if the given page is allocated.
+		// (2) Return false if the given page is allocated.
 		if (*slot == NULL) {
 			return false;
 		}
 		
-		//If the given page is in the first order, we just remove it and return.
+		// (3) If the given page is in the first order, we just remove it and return.
 		if (i == 0) { 
 			remove_block(*slot, 0);
 			return true;
 		}
 		
-		//Else, we keep splitting the block until we get the single page we need.
+		// (4) Else, we keep splitting the block until we get the single page we need.
 		PageDescriptor *temp = *slot;
 		for (; i > 0; i--) {
 			temp = split_block(&temp, i);
@@ -352,20 +353,43 @@ public:
 	{
 		mm_log.messagef(LogLevel::DEBUG, "Buddy Allocator Initialising pd=%p, nr=0x%lx", page_descriptors, nr_page_descriptors);
 		
-		// TODO: Initialise the free area linked list for the maximum order
+		// TODO: Initialise the free area linked list(free list) for the maximum order.
 		// to initialise the allocation algorithm.
 		
-		//Initially, only one large block containing all pages is free, hence is on the free list.
-		int i = nr_page_descriptors;
+		// First check if the free list is vacant.
+		for (int i = 0;i < MAX_ORDER; i++) {
+			if (_free_areas[i] != NULL)
+				return false;
+		}
+
+		// Check if the value of MAX_ORDER is a reasonable value.
+		int max_pages_per_block = pages_per_block(MAX_ORDER - 1);
+		assert(nr_page_descriptors >= max_pages_per_block);
+
+		// Initially, seperate all pages of memory into two parts, because the number of pages may not just fit in
+		// the MAX_ORDER, thus leaves rest part of pages to be initialised.
+		int main_part = nr_page_descriptors/max_pages_per_block;
+		int rest_part = nr_page_descriptors%max_pages_per_block;
+
+		// Assign main part of pages to the free list for the maximum order.
 		PageDescriptor **slot = &_free_areas[MAX_ORDER - 1];
 		*slot = page_descriptors;
+		main_part -= 1;
 
-		int max_pages_per_block = pages_per_block(MAX_ORDER - 1);
-		i -= max_pages_per_block;
-		while(i > 0) {	  
+		while (main_part > 0) {	  
 		 	(*slot)->next_free = *slot + max_pages_per_block;
 			slot = &(*slot)->next_free;
-			i -= max_pages_per_block;
+			main_part -= 1;
+		}
+
+		// Assign the rest part of pages. 
+		PageDescriptor *rest_pgd = *slot + max_pages_per_block;
+		for (int i = MAX_ORDER - 2; i >= 0; i--) {
+			if (rest_part >= pages_per_block(i)) {
+				_free_areas[i] = rest_pgd;
+				rest_pgd += pages_per_block(i);
+				rest_part -= pages_per_block(i);
+			}
 		}
 
 		return true;		
