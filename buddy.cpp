@@ -113,7 +113,7 @@ private:
 	 * @param pgd The page descriptor of the block to remove.
 	 * @param order The order in which to remove the block from.
 	 */
-	void remove_block(PageDescriptor *pgd, int order)
+	PageDescriptor *remove_block(PageDescriptor *pgd, int order)
 	{
 		// Starting from the _free_area array, iterate until the block has been located in the linked-list.
 		PageDescriptor **slot = &_free_areas[order];
@@ -127,6 +127,8 @@ private:
 		// Remove the block from the free list.
 		*slot = pgd->next_free;
 		pgd->next_free = NULL;
+		
+		return pgd;
 	}
 	
 	/**
@@ -139,8 +141,6 @@ private:
 	 */
 	PageDescriptor *split_block(PageDescriptor **block_pointer, int source_order)
 	{
-		//char buffer[10] = "split!";
-		//mm_log.messagef(LogLevel::DEBUG, "%s", buffer);
 		// Make sure there is an incoming pointer.
 		assert(*block_pointer);
 		
@@ -175,8 +175,7 @@ private:
 	 */
 	PageDescriptor **merge_block(PageDescriptor **block_pointer, int source_order)
 	{
-		//char buffer[10] = "merge!";
-		//mm_log.messagef(LogLevel::DEBUG, "%s", buffer);
+	
 		assert(*block_pointer);
 		
 		// Make sure the area_pointer is correctly aligned.
@@ -219,21 +218,14 @@ public:
 	 * allocation failed.
 	 */
 	PageDescriptor *alloc_pages(int order) override
-	{
-	
-		char buffer[10] = "alloc!";
-		mm_log.messagef(LogLevel::DEBUG, "%s %d", buffer, order);
-		
+	{	
 		PageDescriptor **slot = &_free_areas[order];
 
-		
 		// (1) Check if we already have a block at this order.
 		if (*slot != NULL) {
-			PageDescriptor *temp = *slot;
-			remove_block(*slot, order);
-			return temp;
+			return remove_block(*slot, order);
 		}
-		//mm_log.messagef(LogLevel::DEBUG, "%d", 1);
+	
 		// (2) Search for an available larger block.
 		int i;
 		for (i = order; i < MAX_ORDER; i++) {
@@ -243,11 +235,11 @@ public:
 			if(*slot != NULL)
 			break;	
 		}
-		//mm_log.messagef(LogLevel::DEBUG, "%d", 2);
+		
 		// (3) No available block exists, allocation failed.
 		if (i == MAX_ORDER)
 			return NULL;
-		//mm_log.messagef(LogLevel::DEBUG, "%d", 3);
+	
 		// (4) If a larger block found, keep splitting it until the left-hand-side of new block fits the size.
 		for (; i > order; i--) {
 			split_block(slot, i);
@@ -255,10 +247,7 @@ public:
 			
 		}
 	
-		remove_block(*slot, order);
-		//mm_log.messagef(LogLevel::DEBUG, "%d",  sys.mm().pgalloc().pgd_to_pfn(*slot));
-		return buddy_of(*slot, order);
-		
+		return remove_block(*slot, order);
 	}
 	
 	/**
@@ -268,9 +257,6 @@ public:
 	 */
 	void free_pages(PageDescriptor *pgd, int order) override
 	{
-		char buffer[10] = "free!";
-		mm_log.messagef(LogLevel::DEBUG, "%s %d %d", buffer, sys.mm().pgalloc().pgd_to_pfn(pgd), order);
-		//showfree();
 		// Make sure that the incoming page descriptor is correctly aligned
 		// for the order on which it is being freed, for example, it is
 		// illegal to free page 1 in order-1.
@@ -300,8 +286,6 @@ public:
 			else
 				slot = merge_block(slot, i);
 		}
-				mm_log.messagef(LogLevel::DEBUG, "%d", 1);
-
 	}
 	
 	/**
@@ -311,13 +295,6 @@ public:
 	 */
 	bool reserve_page(PageDescriptor *pgd)
 	{
-		//showfree();
-		
-		//char buffer[10] = "reserve!";
-		//if(sys.mm().pgalloc().pgd_to_pfn(pgd) == 158)
-		//mm_log.messagef(LogLevel::DEBUG, "%s %d", buffer,  sys.mm().pgalloc().pgd_to_pfn(pgd));
-		//assert(pgd ->type != PageDescriptorType::AVAILABLE);
-
 		// (1)Search for the block that contains the given page.
 		int i = MAX_ORDER - 1;
 		PageDescriptor **slot = &_free_areas[i];
@@ -358,13 +335,12 @@ public:
 			temp = split_block(&temp, i);
 			uint64_t temp_pfn = sys.mm().pgalloc().pgd_to_pfn(temp);
 
-			if(temp_pfn + pages_per_block(i - 1) - 1 < pfn) {
+			if (temp_pfn + pages_per_block(i - 1) - 1 < pfn) {
 				temp = buddy_of(temp, i - 1);
 			}
 		}
-		
+	
 		remove_block(temp, 0);
-
 		return true;
 	}
 	
@@ -392,9 +368,7 @@ public:
 			i -= max_pages_per_block;
 		}
 
-		
-		return true;
-		
+		return true;		
 	}
 
 	/**
@@ -425,25 +399,6 @@ public:
 			
 			mm_log.messagef(LogLevel::DEBUG, "%s", buffer);
 		}
-	}
-
-	void showfree() {
-		char buffer[10] = "freelist!";
-		mm_log.messagef(LogLevel::DEBUG, "%s", buffer);
-		for(int i = 0;i < MAX_ORDER;i++)
-		{
-			if(_free_areas[i] != NULL)
-				mm_log.messagef(LogLevel::DEBUG, "%d", sys.mm().pgalloc().pgd_to_pfn(_free_areas[i]));
-		}
-	}
-
-
-	void test() {
-		for(int i = 0;i < 10; i++)
-		{
-			alloc_pages(1);
-		}
-		assert(false);
 	}
 	
 private:
