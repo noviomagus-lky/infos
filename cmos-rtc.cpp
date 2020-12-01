@@ -61,8 +61,8 @@ public:
 			buffer[i] = __inb(0x71);
 		}
 
-		//Process data to get the time and date.
-		//If the format of data is DCB, first convert it to binary.
+		//Process data to get the time and date.If the format of data is DCB, 
+		//first convert it to binary.
 		if ((buffer[0x0B] & 0x04) == 0) {
 			
 			for (int i = 0; i <= 0x09; i++){
@@ -72,6 +72,7 @@ public:
 			}
 		}
 
+		//Store the data into the RTCTimePoint data structure.
 		tp.seconds = buffer[0x00];
 		tp.minutes = buffer[0x02];
 		tp.hours = buffer[0x04];
